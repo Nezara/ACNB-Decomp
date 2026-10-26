@@ -1,6 +1,7 @@
 # Whitelist: only the sources, scripts, symbols and replays are versioned.
 /*
 !/.gitignore
+!/README.md
 !/port/
 !/sourceport/
 !/scripts/
