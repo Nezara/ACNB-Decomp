@@ -1,0 +1,34 @@
+# Whitelist: only the sources, scripts, symbols and replays are versioned.
+/*
+!/.gitignore
+!/port/
+!/sourceport/
+!/scripts/
+!/symbols/
+
+/port/build/*
+# precious inputs that live in build/: deterministic replays + the user's settings
+!/port/build/battle1.txt
+!/port/build/battle_marine.txt
+!/port/build/blade1.txt
+!/port/build/garage1.txt
+!/port/build/garage2.txt
+!/port/build/garage3.txt
+!/port/build/garage4.txt
+!/port/build/garage5.txt
+!/port/build/garage6.txt
+!/port/build/garage7.txt
+!/port/build/garage_detail.txt
+# script-made replays
+!/port/build/auto_*.txt
+!/port/build/acnb.ini
+/port/memcard/
+/sourceport/build/
+
+__pycache__/
+*.pyc
+# Stage 0: the disc image lives in game/ (a hard link or a plain copy of the ISO; never versioned)
+!/game/
+/game/*
+!/game/README.md
+!/README_STAGE0.md

@@ -1,0 +1,681 @@
+# Logical state hash field list.
+# Core tier = this list (the phase-4 parity contract). Order matters: values are fed in list order.
+# ST1 (s103): flow, rng, ac0..ac3. ST2 (s103): pools (rule 2), spl / ene each-areas (order-free core), com areas, weapon /
+# lock / anim detail, the full walk (`full` lines = full tier, ACNB_STATE_FULL=0 skips them). ST3 (s103): the menu
+# areas (menu, mobj, gdata); spl / ene .id (allocator slot indices) moved to the full tier.
+
+# battle running: OLSORTIE loaded, main step 5 (__DoStepSortie: LoopSortie_Begin / Do / End) and LoopSortie_Do not
+# yet asked to stop (MyI.mainproc != 0 breaks the loop; __DoStepSortie clears it after End). Includes the
+# LoopSortie_Begin load (g_ac being set up) - no game flag marks "Begin done" without a hook.
+gate battle ov == 1 && s_stepMainCur == 5 && MyI.mainproc == 0
+
+# ---- pools (rule 2: a pointer into one hashes as POOL:INDEX.member.path; checked in this order, before symbols).
+# unordered = allocator slots: core hashes POOL:*.member (allocator-free), full keeps the index.
+pool ac     g_ac                                              # AcPlayerSt[4]: pri_lock, weaponctrl.wp, com_acp, argp
+pool myac   MyAC  if ov == 1                                  # StModel[4] the AC models (g_ac[i].mp, lock ofp)
+pool com    com_info  if ov == 1                              # stCom[4] (comp, s_pSelOpMng)
+# (MyAC / com_info are OLSORTIE data: in the menu overlay their PS2 range holds OLMENU code - ST3 battle1 vb 7824
+#  mobj play_func __MRankingMng_Play read as com:1.mng_buff[4224] in the hybrid)
+pool spl    sap0  type=_spell2 n=512 unordered if battle      # spells (sfx/spell.c: Memm_Alloc 0x24000 = 512 x 0x120)
+pool ene    Enemy type=EnemySt n=EnemyNum unordered if battle # enemies (enemy/enemy.c: Memm_Alloc cnum << 9)
+# stage models (stage/stage.c __AllocStageMemory: 0x180 each, counts STAGE_ModelNum[1] num, [2] onum, [3] cnum, [8] dnum)
+pool map    Map   type=StModel n=STAGE_ModelNum[1] if battle
+pool obj    Obj   type=StModel n=STAGE_ModelNum[2] if battle
+pool chr    Chr   type=StModel n=STAGE_ModelNum[3] if battle
+pool dobj   Dobj  type=StModel n=STAGE_ModelNum[8] if battle
+pool maps   MapS  type=StModel n=STAGE_ModelNum[1] if battle
+pool objs   ObjS  type=StModel n=STAGE_ModelNum[2] if battle
+pool chrs   ChrS  type=StModel n=STAGE_ModelNum[3] if battle
+pool dobjs  DobjS type=StModel n=STAGE_ModelNum[8] if battle
+pool mobj   MenuObjTopp type=stMobj n=1280 if ov == 2         # menu object slots (mobj.c: 1280 x 0x140; ST3 menu area)
+
+# struct-expansion overrides (full walk + whole-struct items)
+member stCom.pad keep      # the COM's virtual pad bits (com.cpp comp->pad), not padding
+member stCom.mng_buff skip   # char[5120] = stComOpMng[op_num] + stComWepMng[wep_num] (comtree.cpp): typed full items in com$i
+                             # (`words` gave false identities: data words like 0x009e3200 fall in a symbol's range)
+member stCom.move_loc n3   # (sic) w = stale stack (comop.cpp mv_stdvse_stitch comop_vsub): xyz only
+member AcDptsSt.cnt ptr    # (sic) set to the struct's own PS2 address (acptsdstry.cpp), then counted up
+# source port lambda adaptors in function tables (com.cpp com_extinit_tbl: slot -> the PS2 function it wraps)
+alias com_extinit_tbl 0 __com_ExtInit_BackBooster
+alias com_extinit_tbl 1 __com_ExtInit_NoExt
+alias com_extinit_tbl 3 com_extinit_vsweapon
+alias com_extinit_tbl 4 com_extinit_vsweapon
+alias com_extinit_tbl 6 __com_ExtInit_NoExt
+alias com_extinit_tbl 12 com_extinit_enepack
+alias com_extinit_tbl 13 __com_ExtInit_NoExt
+alias com_extinit_tbl 16 __com_ExtInit_Magazine
+alias com_extinit_tbl 17 __com_ExtInit_NoExt
+
+# the game heap (main/memm.c Memm_Alloc buffer): heap pointers = "H" in core ( rule 5; ST3: the SP's menu
+# heap layout differs from the hybrid's, garage6 vb 48), s_bufGeneral+0xOFF in full
+heap s_bufGeneral
+
+area flow
+full MyI                   # full walk: the whole roots
+full g_nextstage
+FRAME
+ov
+MyI.usernum
+MyI.playernum
+MyI.mainproc
+MyI.gameproc
+MyI.fade
+MyI.fadetime
+MyI.pause
+MyI.vsform
+MyI.vswinner
+MyI.replaymode
+MyI.replayon
+MyI.myplayerno
+MyI.camplayerno
+MyI.restart
+MyI.deadstop
+play_info
+g_nextstage.stage
+g_nextstage.sortie_mode
+g_nextstage.is_split
+g_nextstage.vstime
+g_nextstage.qtime
+g_nextstage.miss_id
+g_nextstage.ranker_id
+g_nextstage.ac_belong
+g_nextstage.asmbly
+g_nextstage.acopt
+AC_VS_RESTTIME
+# g_mpg_vblankCount (movie player vblank counter) left out: written by the libmpeg path, which the source port
+# replaces with a host player (no such symbol there) - not sim state (verifier s103).
+NowPlayerNum
+s_stepMainCur              # main.c step machine (writer s103: gate input, hashed too)
+
+area rng
+ps2_impure_ptr->+0xa8 type=u64   # newlib rand _rand_next (lib/sdk/newlib.cpp ps2_rand_next)
+MyI.random_seed
+play_info.rand_seed
+opc_frand                  # ac/parts_opc.c AcOpc_Control's 4 static fRand (nodwarf.h)
+__DrawNoiseMode__s_irand type=s32    # gfx/multx.c __DrawNoiseMode static LCG (writer s103 grep)
+__DrawPresetNoise__s_irand type=s32  # gfx/scr_eff.c __DrawPresetNoise static LCG (writer s103 grep)
+radar_noise_seed           # stat/radar.c noise seed (nodwarf.h; writer s103 grep)
+
+area ac$i x4 if battle && $i < NowPlayerNum
+# AP / state
+g_ac[$i].id
+g_ac[$i].hp
+g_ac[$i].dead
+g_ac[$i].dying_cnt
+g_ac[$i].actno
+g_ac[$i].actstat
+g_ac[$i].stat
+g_ac[$i].syserr
+g_ac[$i].areastat
+g_ac[$i].effectstat
+g_ac[$i].exestat
+g_ac[$i].shieldstat
+g_ac[$i].rb_stat
+g_ac[$i].actstep
+g_ac[$i].nextact
+g_ac[$i].acttime
+g_ac[$i].stifftime
+g_ac[$i].freezetime
+g_ac[$i].spflag
+g_ac[$i].key_enable
+g_ac[$i].comthinkoff
+g_ac[$i].areaovered
+# energy / heat
+g_ac[$i].energyReal
+g_ac[$i].energyRealMax
+g_ac[$i].energyRedF
+g_ac[$i].energyRedzone
+g_ac[$i].temperature
+g_ac[$i].cqheatExCooldown
+# kinematics
+g_ac[$i].loc
+g_ac[$i].ang
+g_ac[$i].oloc
+g_ac[$i].oang
+g_ac[$i].velocity
+g_ac[$i].gravity
+g_ac[$i].turnspd
+g_ac[$i].floor_high
+g_ac[$i].water_high
+g_ac[$i].tenjo_high
+g_ac[$i].view
+# boost (+ AcCtrlPrivateSt scalars: writer s103 pick from sbx_types.tsv)
+g_ac[$i].fcntBoost
+g_ac[$i].dirCutbackPrev
+g_ac[$i].hover_effectlv
+g_ac[$i].prvp->AcCtrlPrivateSt.climb_high
+g_ac[$i].prvp->AcCtrlPrivateSt.effectstatPrev
+g_ac[$i].prvp->AcCtrlPrivateSt.effectstatNext
+g_ac[$i].prvp->AcCtrlPrivateSt.optmiz_resttime
+g_ac[$i].prvp->AcCtrlPrivateSt.dead_pause
+g_ac[$i].prvp->AcCtrlPrivateSt.killmetype
+g_ac[$i].prvp->AcCtrlPrivateSt.killmeid
+g_ac[$i].prvp->AcCtrlPrivateSt.slide_count
+g_ac[$i].prvp->AcCtrlPrivateSt.vs_mgun_cnt
+g_ac[$i].prvp->AcCtrlPrivateSt.exvs_mgun_cnt
+g_ac[$i].prvp->AcCtrlPrivateSt.gazelock
+g_ac[$i].prvp->AcCtrlPrivateSt.isGazeLock
+g_ac[$i].prvp->AcCtrlPrivateSt.world_velocity
+g_ac[$i].prvp->AcCtrlPrivateSt.parent_movevec
+g_ac[$i].prvp->AcCtrlPrivateSt.dmgcnt_ac
+g_ac[$i].prvp->AcCtrlPrivateSt.dmgcnt_ene
+g_ac[$i].prvp->AcCtrlPrivateSt.cqheatAddExternal
+g_ac[$i].prvp->AcCtrlPrivateSt.cqheatAccumulate
+# weapons
+g_ac[$i].equip_weapon
+g_ac[$i].next_weapon
+g_ac[$i].reserve_weapon
+g_ac[$i].reserve_spare
+g_ac[$i].aw_type
+g_ac[$i].next_aw_type
+g_ac[$i].wep_release
+g_ac[$i].weaponctrl[0..3].actstep
+g_ac[$i].weaponctrl[0..3].acttime
+g_ac[$i].weaponctrl[0..3].busytime
+g_ac[$i].weaponctrl[0..3].cntBurstShot
+g_ac[$i].weaponctrl[0..3].fcntAcptBurst
+g_ac[$i].weaponctrl[0..3].wep_wk
+g_ac[$i].weaponctrl[0..3].nextlock      # StNextLock incl. ofp (identity)
+g_ac[$i].weaponctrl[0..3].wp            # weapon record (pool / symbol identity)
+g_ac[$i].weaponctrl[0..3].nmuzzle
+g_ac[$i].weaponctrl[0..3].iregEff
+g_ac[$i].weaponctrl[0..3].onequipfunc
+g_ac[$i].weaponctrl[0..3].ontrigfunc
+g_ac[$i].weaponctrl[0..3].shotcbfunc
+g_ac[$i].weaponctrl[0..3].actionfunc
+g_ac[$i].weaponctrl[0..3].managefunc
+g_ac[$i].weaponctrl[0..3].onreleasefunc
+g_ac[$i].weaponctrl[0..3].onfreefunc
+g_ac[$i].weaponctrl[0..3].apr_splfunc
+g_ac[$i].weaponctrl[0..3].subspells
+# ammo: blt_cnt is the live counter (writer s103: acasm / acctrl reset it from blt_sta / blt_initcnt, acwep.cpp
+# settles costRemoveAmm = blt_price * (blt_initcnt - blt_cnt))
+g_ac[$i].param.weapons[0..3].blt_cnt
+g_ac[$i].param.weapons[0..3].blt_initcnt
+g_ac[$i].param.extweapon.blt_cnt
+g_ac[$i].param.n_weapon
+# lock / target
+g_ac[$i].lockmng.flag
+g_ac[$i].lockmng.lock_cnt
+g_ac[$i].lockmng.rest_lock
+g_ac[$i].lockmng.ulock_mask
+g_ac[$i].lockmng.fcs_err_time
+g_ac[$i].lockmng.jangx
+g_ac[$i].lockmng.jangy
+g_ac[$i].lockmng.scanl_angx
+g_ac[$i].lockmng.scanl_angy
+g_ac[$i].lockmng.vangx
+g_ac[$i].lockmng.vangy
+g_ac[$i].lockmng.pri_lock
+g_ac[$i].lockmng.lock[0..12].ofp
+g_ac[$i].lockmng.lock[0..12].ofp_type
+g_ac[$i].lockmng.lock[0..12].dist
+g_ac[$i].lockmng.lock[0..12].lock_stat
+g_ac[$i].lockmng.lock[0..12].lock_count
+g_ac[$i].lockmng.lock[0..12].lock_lrtime
+g_ac[$i].lockmng.lock[0..12].lock_artime
+g_ac[$i].lockmng.lock[0..12].lock_lktime
+g_ac[$i].lockmng.lock[0..12].lock_artime2
+g_ac[$i].lockmng.lock[0..12].loc
+g_ac[$i].flare_time
+g_ac[$i].flare_damage
+g_ac[$i].nolock_time
+g_ac[$i].unlocked_time
+g_ac[$i].genedown_time
+g_ac[$i].noradar_time
+g_ac[$i].ecmnoise
+g_ac[$i].rateEcmError
+# anim
+g_ac[$i].param.idAnim
+g_ac[$i].mp
+g_ac[$i].mp->StModel.loc
+g_ac[$i].mp->StModel.ang
+g_ac[$i].smp
+g_ac[$i].eobmp
+g_ac[$i].boostmp
+g_ac[$i].sublegmp
+g_ac[$i].inside_mp
+g_ac[$i].op->ObjectSt.frame
+g_ac[$i].op->ObjectSt.nframe
+g_ac[$i].op->ObjectSt.todid
+g_ac[$i].op->ObjectSt.animloop
+g_ac[$i].op->ObjectSt.now_key
+g_ac[$i].op->ObjectSt.hokanframe
+g_ac[$i].op->ObjectSt.hokantime
+g_ac[$i].op->ObjectSt.hokanrate
+g_ac[$i].op->ObjectSt.incframe
+g_ac[$i].Warm_ctrl.actstep
+g_ac[$i].Warm_ctrl.acttime
+g_ac[$i].Warm_ctrl.actfunc
+g_ac[$i].Rarm_ctrl.actstep
+g_ac[$i].Rarm_ctrl.acttime
+g_ac[$i].Rarm_ctrl.actfunc
+g_ac[$i].jointreact[0..14].reaction_time
+g_ac[$i].jointreact[0..14].reaction_startframe
+g_ac[$i].jointreact[0..14].reaction_nframe
+g_ac[$i].jointreact[0..14].reactdamper
+# hit / damage; lock_defldb used entries: main = [0, num_db_main), sub = [max_db_main, + num_db_sub) (stat/lock.cpp)
+g_ac[$i].defence
+g_ac[$i].lock_defldb.num_db_main
+g_ac[$i].lock_defldb.num_db_sub
+g_ac[$i].lock_defldb.loc_db n=g_ac[$i].lock_defldb.num_db_main
+g_ac[$i].lock_defldb.angy_db n=g_ac[$i].lock_defldb.num_db_main
+g_ac[$i].lock_defldb.loc_db n=g_ac[$i].lock_defldb.num_db_sub at=g_ac[$i].lock_defldb.max_db_main
+g_ac[$i].lock_defldb.angy_db n=g_ac[$i].lock_defldb.num_db_sub at=g_ac[$i].lock_defldb.max_db_main
+g_ac[$i].orbitshotnum
+# behaviour pointers (by name)
+g_ac[$i].actfunc
+g_ac[$i].managefunc
+g_ac[$i].mislink_func
+g_ac[$i].misalert_func
+g_ac[$i].funcOrbLink
+g_ac[$i].funcCounter
+# assembly
+g_ac[$i].param.partsid
+g_ac[$i].param.hp
+g_ac[$i].param.total_weight
+g_ac[$i].param.weapons[0..3].id
+# full walk of the AC roots (every DWARF member minus padding; sub-structs owned by this AC followed)
+full g_ac[$i]
+full g_ac[$i].prvp->AcCtrlPrivateSt
+full g_ac[$i].frdp->AcCtrlFriendSt
+full g_ac[$i].mp->StModel
+full g_ac[$i].op->ObjectSt
+
+# COM AI (com/com.c): all per-COM state is com_info[ComNum] (stCom; COM k drives g_ac[NowUserPlayerNum + k] or, type 1,
+# an enemy through body.com_enp). One area per COM slot (not inside the AC area: the slot -> AC map is dynamic).
+area com$i x4 if battle && $i < ComNum
+com_info[$i].comid
+com_info[$i].type
+com_info[$i].chrid
+com_info[$i].stat
+com_info[$i].body          # union of com_acp / com_enp (pointer words -> identity)
+com_info[$i].datap
+com_info[$i].pad
+com_info[$i].pad_old
+com_info[$i].elen
+com_info[$i].elenxz
+com_info[$i].ctoe_ang_x
+com_info[$i].ctoe_ang_y
+com_info[$i].etoc_ang_x
+com_info[$i].etoc_ang_y
+com_info[$i].energy_rate
+com_info[$i].last_move_type
+com_info[$i].mp
+com_info[$i].loc
+com_info[$i].ang
+com_info[$i].velocity
+com_info[$i].viewang
+com_info[$i].eloc
+com_info[$i].eang
+com_info[$i].move_loc[0..2]          # w = stale stack (member rule above)
+com_info[$i].move_ang
+com_info[$i].nearest_bltp
+com_info[$i].nearest_misp
+com_info[$i].walldist_forward
+com_info[$i].walldist_right
+com_info[$i].walldist_left
+com_info[$i].cannot_move_time
+com_info[$i].locked_time
+com_info[$i].lose_time
+com_info[$i].chase_time
+com_info[$i].op_num
+com_info[$i].op_sel
+com_info[$i].wep_num
+com_info[$i].wep_sel
+com_info[$i].wep_sel_arm
+com_info[$i].wepmng_equip
+com_info[$i].ene_mp
+com_info[$i].ene_wp_dist
+com_info[$i].ene_type
+com_info[$i].jump_stat
+com_info[$i].jump_ct
+com_info[$i].opmng
+com_info[$i].wepmng
+com_info[$i].variable_short
+com_info[$i].order_num
+com_info[$i].cant_move
+com_info[$i].purge_count
+full com_info[$i]
+full com_info[$i].mng_buff type=a40:s:stComOpMng n=com_info[$i].op_num
+full com_info[$i].wepmng->+0 type=a35:s:stComWepMng n=com_info[$i].wep_num
+
+# COM statics outside stCom (com.c / comtree.c / comtg.c): the selectors of the COM processed last + think state
+area comg if battle && ComNum > 0
+ComNum
+comp
+com_acp
+com_enp
+com.c:s_MovePadNoChangeFrame
+com.c:s_MovePad
+com.c:g_NoMoveFlag
+com.c:ENE_mis_reload
+comtree.c:s_valueMaxOp
+comtree.c:s_valueMaxWp
+comtree.c:s_flagForceOp
+comtree.c:s_typeArm
+comtree.c:s_idEqeWp
+comtree.c:s_idSelWp
+comtree.c:s_idSelOp
+comtree.c:s_pSelOpMng
+full comtg.c:s_ComtgEvMng
+
+# spells (sfx/spell.c sap0[1..511]; slot 0 unused). live = on != 0 (-1 / -2 = dying, still hashed).
+area spl each spl from 1 if battle
+live .on
+.on
+.flag
+.frame
+.myframe
+.FRAME
+full .id                   # the magic slot (DF_MAGIC2_AppearMagic_SPL2): allocator index, full only (ST3)
+.weapon_id
+.sdp
+.snd_id
+.hit_attr
+.hcol
+.hcol2
+.speed
+.argp
+.ocmp
+.dstat
+.spell
+.comb
+.alter
+.hit_start
+.maphit
+.pos
+.ang
+.n_speed
+.rot
+.target
+.swk
+.dat                       # union of the SPELL2_*_ST records (pointer words -> identity)
+.stat
+.spell_type
+.intercept
+.flags
+.dist
+full .
+
+# spell statics (sfx/spell.c)
+area splg if battle
+spell.c:s_FunnelID
+spell.c:s_NowFrameDecoy
+spell.c:s_ThunderFlag
+spell.c:s_MazzleFlag
+spell.c:s_ParabolicID
+g_nEneHitBullet
+Ene_nFire
+Ene_nHit
+AC_nHit
+AC_nFire
+full spell.c:s_seexp
+full spell.c:s_pNowFrameDecoy
+
+# enemies (enemy/enemy.c Enemy[0..EnemyNum)); sandbox roster pids 120 / 1 / 53 + variants 4 / 93
+area ene each ene if battle && EnemyNum > 0
+.pid
+full .id                   # = the Enemy[] slot (enemy.cpp enemy_initialize(i, &enebuff[i], ..)): full only (ST3)
+.use
+.initialize
+.nowhp
+.sw
+.bst
+.dir
+.dsh_dir
+.dying_cnt
+.splash_cnt
+.nolock_time
+.acttime
+.new_pad
+.old_pad
+.cur_opl
+.cur_op
+.op_time_min
+.op_time
+.op_wk
+.mainfunc
+.chkfloor
+.animfunc
+.updmatrix
+.deadfunc
+.thinkfunc
+.ctrlfunc
+.am_time
+.wep_valid
+.lktime
+.e_wk                      # union words (pointer -> identity)
+.flare_time
+.temperature
+.booster
+.boostcost
+.cns_flag
+.se_cnt
+.lkpos
+.dmytrg_loc
+.lkvec
+.initpos
+.oloc
+.vel
+.view
+.dsh_time
+.bld_time
+.waittime
+.trg_cnt
+.trg_mp
+.lkmp
+.old_lkmp
+.base_trg
+.hit_heat
+.heat
+.cur_wep
+.old_wep
+.cant_move
+.wep_time
+.dsp
+.parent
+.child
+.sibling
+.mp
+.mp->StModel.loc
+.mp->StModel.ang
+.mp->StModel.op->ObjectSt.frame
+.mp->StModel.op->ObjectSt.nframe
+.mp->StModel.op->ObjectSt.todid
+.mp->StModel.op->ObjectSt.animloop
+.mp->StModel.op->ObjectSt.now_key
+.mp->StModel.op->ObjectSt.hokanframe
+.mp->StModel.op->ObjectSt.hokantime
+.mp->StModel.op->ObjectSt.hokanrate
+.mp->StModel.op->ObjectSt.incframe
+full .
+
+# enemy globals (enemy/ enefight / getpritrg / einfo)
+area eneg if battle && EnemyNum > 0
+EnemyNum
+CurFrameEnemyNum
+# s_TotalEnemyNum: four file statics of event100 / 140 / 141 / 150, not native in the source port (no row): left out
+_EnemyTop
+_EnemyLast
+_ModelTop
+getpritrg.c:lock_num
+getpritrg.c:cmp_val_angx
+getpritrg.c:cmp_val_angy
+getpritrg.c:cmp_val_dist
+getpritrg.c:cmp_val_prev
+EneGrpDestroyCnt
+full CurFrameEnemy
+
+# ---- menu (ST3, s103). Gate: OLMENU loaded. Cursor / selection state lives in three places: MenuMng (top-level
+# menu indices), the screens' own statics (below, writer grep of src/menu data rows) and the mobj slots' dt (the
+# widgets: window / sprite / string tweens, the mobj2 system objects of masm / mop / marena screens keep their
+# cursor there - area mobj).
+gate menu ov == 2
+
+area menu if menu
+MenuMng.frame
+MenuMng.type
+MenuMng.idx
+MenuMng.map_id
+MenuMng.get_item
+MenuMng.ilink
+MenuMng.player[0].ac_idx
+MenuMng.player[0].embp
+MenuMng.player[1].ac_idx
+MenuMng.player[1].embp
+MenuMng.language
+MenuMng.f_help
+MenuMng.ret
+MenuMng.stat
+MenuMng.count
+MenuMng.f_use_readbuff
+MenuMng.f_new_game
+MenuMng.movie_control
+MenuMng.f_continue
+MenuMng.f_movie_end
+MenuMng.f_new_option
+MenuMng.player_idx
+MenuMng.f_new_system
+MenuMng.init_mode
+MenuMng.f_ne_parts_remove   # the 0x9e bitfields
+MenuMng.f_add_new_parts
+MenuMng.f_ne_garage_remove
+MenuMng.f_show_hdd_err
+MenuMng.f_movie_brief
+MenuMng.mc_slot
+MenuMng.mc_file
+MenuMng.alpha
+MenuMng.fadetype
+MenuMng.fadecount
+MenuMng.fadecountmax
+MenuMng.category_index
+MenuMng.detail_index
+MenuMng.level_index
+MenuMng.ranker_index
+MenuMng.nameRankerPilot
+MenuMng.modeArena
+MenuMng.idRankerMotion
+MenuMng.flagSearch
+MenuMng.f_no_draw_spare
+MenuMng.f_convert
+MenuMng.f_asem_detail_on
+MenuMng.f_hide_short_movie
+MenuMng.pTopUseAC
+full MenuMng               # + dataTbl / tm2Tbl / datAsm / pTm2CommonBnd (loaded data: pointer identity only)
+gMManageCtr                # fTitleSkip, fPartsAll, fExArenaOn, fAddDirt (main/lay_menu.c)
+g_nextmenu.miss_id         # main/game.c: the menu's next-step record
+g_nextmenu.miss_stat
+full g_nextmenu
+# per-screen cursors / screen state (writer s103 ST3; source = the file of each static)
+s_indexCursorTop           # menu/mgen_tab.c tab cursor
+s_indexCursorBottom        # menu/mgen_tab.c
+# AcTestSelextIdx (menu/mactest.c AC TEST selection) left out: mactest.c is not in the source port yet
+MPadUser                   # menu/mactest.c
+s_indexBridgeData          # menu/mresult_bridge.c
+s_stArenaAsemMng.step      # menu/marena_asem_mng.c
+s_stArenaBridge.numSearchData   # menu/marena_bridge.c (arena search)
+s_stArenaBridge.step
+f_versus_mcload            # menu/mgarage.c
+ePad                       # menu/mefunc.c the menu's decoded pad bits (repeat applied)
+padRepeatIntv              # menu/mefunc.c pad repeat counter
+s_msysMcResult             # menu/msys.c memory-card system steps
+gMcMode
+Mcf_Proc_Ret
+gLoadCheckF
+AddBlinkAlpha              # menu/masm.c garage assembly arrow blink
+ArrowBlinkCnt
+ArrowSaveAlpha
+full s_stArenaAsemMng      # the screens' manager statics, whole (full tier)
+full s_stArenaBridge
+full s_stArenaPointMng     # menu/marena_point_mng.c
+full s_stMResultBridge     # menu/mresult_bridge.c
+full s_stRankMng           # menu/mrank_mng.c
+full s_stAppellationMng    # menu/mappellation_mng.c
+full s_stResultMng         # menu/mresult_mng.c
+full s_stSecretPartsMng    # menu/msecretparts_mng.c
+full s_stTrendMng          # menu/mtrend_mng.c
+full s_stMUnitMng          # menu/munit_mng.c (apMobjUnit[10]: the live unit objects)
+full MBackMng              # menu/mback.c
+full MBGMng                # menu/mbguide.c
+full s_color               # menu/mcolor.c paint screen
+full DlgMng                # menu/mdialog.c
+full HelpMng               # menu/mhelp.c
+full g_KeyGuideMng         # menu/mkeyguide.c
+full MMMKindMng            # menu/mmm.c
+full gAiAcData             # main/lay_menu.c
+
+# mobj slots (menu/mobj.c MenuObjTopp[0..1279], used = f_use; DF_MOBJ_GetNewObject clears the whole slot). Core keeps
+# slot order (`ordered`: children are allocated after their parent, phase 4 must rebuild the same screen). The dt
+# union is hashed typed: by the slot's type for mobj.cpp's objects (1 sprite, 2 string, 3 number, 4 window, 5 / 8
+# model), by play_func for the mobj2 / unit objects with a DWARF struct (mobj2.cpp *_of accessors, munitsprite.cpp
+# unit_of). Everything else (type 0 system objects with host-only structs: mmanage_dt, mtitle MT_F, mobj2_item, masm /
+# mop screen objects ...) is not hashed at all, only dumped (`info`, as 32-bit words): untyped words cannot be told
+# from pointers across builds (ST3 garage6: a colour word 0x00808080 lies inside the PS2 heap, so the hybrid read it
+# as s_bufGeneral+0x333100 and the source port as a raw word; in full the data words 0x00420000 / 0x00500042 resolve
+# to ReplayBuffer+.. / s_bufGeneral+.. in the hybrid and raw or to SP-only symbols in the source port). Type more of
+# them here (`.dt type=s:S when=.play_func==&F`) when a screen's state needs it.
+area mobj each mobj ordered if menu
+live .f_use
+.f_erase
+.f_draw
+.f_help
+.draw_prio
+.type
+.stat
+.count
+.play_func
+.draw_func
+.pkt_func
+# sprites: a zero-size sprite with a zero-size target (rect.w == 0, next_rect.w == 0: draws nothing) hashes only its
+# sizes / fade state: garage6 __GAMEDATA_New's pInfo sprite is built from a stale stack layout (quirk menu/msys,
+# "info_0" not found: rect.x = stale + 0x28, 80 hybrid | 40 SP - interpreted vs native callees leave other words)
+.dt.sprite when=.type==1,.dt.sprite.rect.w!=0
+.dt.sprite when=.type==1,.dt.sprite.rect.w==0,.dt.sprite.next_rect.w!=0
+.dt.sprite.rect.w when=.type==1,.dt.sprite.rect.w==0,.dt.sprite.next_rect.w==0
+.dt.sprite.rect.h when=.type==1,.dt.sprite.rect.w==0,.dt.sprite.next_rect.w==0
+.dt.sprite.next_rect.h when=.type==1,.dt.sprite.rect.w==0,.dt.sprite.next_rect.w==0
+.dt.sprite.fade_cc when=.type==1,.dt.sprite.rect.w==0,.dt.sprite.next_rect.w==0
+.dt.sprite.fade_max when=.type==1,.dt.sprite.rect.w==0,.dt.sprite.next_rect.w==0
+.dt.string when=.type==2
+.dt.number when=.type==3
+.dt.window when=.type==4
+.dt.model when=.type==5
+.dt.model when=.type==8
+.dt type=s:struct_5356132a when=.play_func==&__PlayBlinkSprite     # mobj2.cpp mobj2_blink_of
+.dt type=s:struct_6e725289 when=.play_func==&__PlayTagWindow       # mobj2_tag_of
+.dt type=s:struct_6280830a when=.play_func==&__PlayIconModel       # mobj2_icon_of
+.dt type=s:struct_5160bf84 when=.play_func==&__PlayIcnMdlList      # mobj2_icnlist_of
+.dt type=s:struct_f8cbbdcd when=.play_func==&__PlayMdlWin          # mobj2_mdlwin_of (+ the 4 move steps)
+.dt type=s:struct_f8cbbdcd when=.play_func==&__PlayMdlWinMoveUp
+.dt type=s:struct_f8cbbdcd when=.play_func==&__PlayMdlWinMoveDown
+.dt type=s:struct_f8cbbdcd when=.play_func==&__PlayMdlWinMoveLeft
+.dt type=s:struct_f8cbbdcd when=.play_func==&__PlayMdlWinMoveRight
+.dt type=s:struct_36ee7a34 when=.play_func==&__UnitSprite_Play     # munitsprite.cpp unit_of (unit sprites: Mover tween)
+info .dt when=.type!=1,.type!=2,.type!=3,.type!=4,.type!=5,.type!=8
+
+# game data (ac/acctrl.c g_gamedata[4], StAcrtGameData 0x13e00): core = the named top-level scalars + option +
+# the arena / search / official records; full = the whole walk. Card files are compared by the card-dir compare.
+area gdata if menu
+g_gamedata[0..3].name
+g_gamedata[0..3].money
+g_gamedata[0..3].clearnum
+g_gamedata[0..3].plus
+g_gamedata[0..3].cockpit
+g_gamedata[0..3].cockpitcol
+g_gamedata[0..3].rv_rank
+g_gamedata[0..3].isStopoverSave
+g_gamedata[0..3].indexAppellation
+g_gamedata[0..3].vsnum
+g_gamedata[0..3].vswin
+g_gamedata[0..3].isEnableCockpit
+g_gamedata[0..3].isUseCockpit
+g_gamedata[0..3].numSortie
+g_gamedata[0..3].moneyTotalAssets
+g_gamedata[0..3].option
+g_gamedata[0..3].asmSearchFlag
+g_gamedata[0..3].officialBattle
+g_gamedata[0..3].arenaBattle
+g_gamedata[0..3].pointTotal
+g_gamedata[0..3].flagShowFirstNotice
+full g_gamedata[0..3]
